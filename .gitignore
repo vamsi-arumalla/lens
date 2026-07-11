@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+
+# Android (Phase 1 client)
+android/.gradle/
+android/build/
+android/**/build/
+android/local.properties
