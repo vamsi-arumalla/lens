@@ -1,5 +1,10 @@
 import io
+import os
 from collections.abc import AsyncIterator
+
+# Env vars beat the .env file in pydantic-settings, so tests stay hermetic
+# even when backend/.env holds real keys.
+os.environ["LENS_API_KEY"] = "dev-key"
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,7 +16,7 @@ from app.services.stt import SpeechToText
 from app.services.tts import TextToSpeech
 from app.services.vlm import VisionLanguageModel
 
-API_KEY = "dev-key"  # matches the Settings default when no .env is present
+API_KEY = "dev-key"  # pinned via the env var above
 
 
 class FakeSTT(SpeechToText):
