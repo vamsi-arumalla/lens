@@ -1,13 +1,27 @@
+import asyncio
 import logging
 import re
 from collections.abc import AsyncIterator
+from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
-from app.api.deps import get_stt, get_tts, get_vlm, require_api_key
+from app.api.deps import (
+    get_embeddings,
+    get_storage,
+    get_store,
+    get_stt,
+    get_tts,
+    get_vlm,
+    require_api_key,
+)
 from app.core.config import get_settings
 from app.core.images import downscale_jpeg
+from app.memory.ingest import ingest_moment_safely
+from app.memory.store import MomentStore
+from app.services.embeddings import Embeddings
+from app.services.storage import ObjectStore
 from app.services.stt import SpeechToText
 from app.services.tts import TextToSpeech
 from app.services.vlm import VisionLanguageModel
@@ -60,6 +74,9 @@ async def ask(
     stt: SpeechToText = Depends(get_stt),
     vlm: VisionLanguageModel = Depends(get_vlm),
     tts: TextToSpeech = Depends(get_tts),
+    store: MomentStore | None = Depends(get_store),
+    storage: ObjectStore = Depends(get_storage),
+    embedder: Embeddings = Depends(get_embeddings),
 ) -> StreamingResponse:
     settings = get_settings()
     timings = request.state.timings
@@ -81,10 +98,22 @@ async def ask(
         raise HTTPException(422, "no question: provide audio or text")
     logger.info("question: %r", question)
 
+    memory_search = None
+    if store is not None:
+        async def memory_search(query: str, k: int = 3) -> list[dict[str, Any]]:
+            with timings.stage("memory_search"):
+                image_query = await embedder.embed_query_for_images(query)
+                text_query = await embedder.embed_text(query)
+                hits = await store.search(image_query, text_query, min(k, 5))
+                for hit in hits:
+                    hit["when"] = hit["created_at"].strftime("%Y-%m-%d %H:%M")
+                    hit["thumb_jpeg"] = storage.get(hit["thumb_key"])
+            return hits
+
     # Get the first VLM token before opening the stream so a dead VLM becomes
     # a spoken fallback instead of a broken audio stream (spec: no raw 500 on
     # the user path).
-    text_stream = vlm.stream_answer(question, images)
+    text_stream = vlm.stream_answer(question, images, memory_search)
     try:
         first_token = await anext(text_stream)
         timings.mark("vlm_first_token")
@@ -120,8 +149,23 @@ async def ask(
             # Headers are already sent; all we can do is end the stream.
             logger.exception("streaming failed mid-answer")
         finally:
-            logger.info("answer: %r", " ".join(spoken))
+            answer = " ".join(spoken)
+            logger.info("answer: %r", answer)
             timings.finish()
+            if store is not None and answer:
+                # Every ask becomes a searchable moment; fire-and-forget so
+                # ingest cost never lands on the ask path
+                asyncio.create_task(
+                    ingest_moment_safely(
+                        frames=images,
+                        question=question,
+                        answer=answer,
+                        store=store,
+                        storage=storage,
+                        embedder=embedder,
+                        vlm=vlm,
+                    )
+                )
 
     return StreamingResponse(_audio_stream(), media_type="audio/mpeg")
 
