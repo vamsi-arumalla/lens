@@ -11,3 +11,4 @@ android/.gradle/
 android/build/
 android/**/build/
 android/local.properties
+backend/data/
