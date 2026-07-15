@@ -40,6 +40,18 @@ async def test_sentence_chunks_flushes_trailing_text():
     assert await _collect(["no punctuation at all"]) == ["no punctuation at all"]
 
 
+@pytest.mark.anyio
+async def test_first_chunk_splits_early_at_clause_boundary():
+    # One long sentence: the first chunk should break at the comma so TTS can
+    # start before the sentence finishes.
+    chunks = await _collect(
+        ["Yes, there are several metal items visible here, ",
+         "including the key fob and the chain attached to it."]
+    )
+    assert len(chunks) == 2
+    assert chunks[0] == "Yes, there are several metal items visible here,"
+
+
 @pytest.fixture
 def anyio_backend():
     return "asyncio"

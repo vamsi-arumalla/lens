@@ -19,12 +19,16 @@ router = APIRouter(dependencies=[Depends(require_api_key)])
 FALLBACK_MESSAGE = "Sorry, I couldn't process that."
 
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+_CLAUSE_END = re.compile(r"(?<=[,;:])\s+")
+_EARLY_SPLIT_MIN = 15
 
 
 async def sentence_chunks(text_stream: AsyncIterator[str]) -> AsyncIterator[str]:
     """Regroup a token stream into sentence-sized chunks so TTS can start
-    speaking before the full answer is generated."""
+    speaking before the full answer is generated. The first chunk may split at
+    a clause boundary: time-to-first-audio matters more than prosody there."""
     buffer = ""
+    yielded_any = False
     async for token in text_stream:
         buffer += token
         parts = _SENTENCE_END.split(buffer)
@@ -32,7 +36,15 @@ async def sentence_chunks(text_stream: AsyncIterator[str]) -> AsyncIterator[str]
             sentence = parts.pop(0)
             if sentence:
                 yield sentence
+                yielded_any = True
         buffer = parts[0]
+        if not yielded_any and len(buffer) >= 2 * _EARLY_SPLIT_MIN:
+            for m in _CLAUSE_END.finditer(buffer):
+                if m.start() >= _EARLY_SPLIT_MIN:
+                    yield buffer[: m.start()]
+                    yielded_any = True
+                    buffer = buffer[m.end():]
+                    break
     if buffer.strip():
         yield buffer.strip()
 
@@ -65,6 +77,7 @@ async def ask(
         question = f"{transcript} {question}".strip()
     if not question:
         raise HTTPException(422, "no question: provide audio or text")
+    logger.info("question: %r", question)
 
     # Get the first VLM token before opening the stream so a dead VLM becomes
     # a spoken fallback instead of a broken audio stream (spec: no raw 500 on
@@ -92,8 +105,10 @@ async def ask(
 
     async def _audio_stream() -> AsyncIterator[bytes]:
         got_first_byte = False
+        spoken: list[str] = []
         try:
             async for sentence in sentence_chunks(_resume()):
+                spoken.append(sentence)
                 async for chunk in tts.stream_speech(sentence):
                     if not got_first_byte:
                         timings.mark("tts_first_byte")
@@ -103,6 +118,7 @@ async def ask(
             # Headers are already sent; all we can do is end the stream.
             logger.exception("streaming failed mid-answer")
         finally:
+            logger.info("answer: %r", " ".join(spoken))
             timings.finish()
 
     return StreamingResponse(_audio_stream(), media_type="audio/mpeg")

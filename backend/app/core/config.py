@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
 
     vlm_model: str = "claude-sonnet-4-6"
-    vlm_max_tokens: int = 300
+    vlm_max_tokens: int = 150
     tts_model: str = "tts-1"
     tts_voice: str = "alloy"
     whisper_model: str = "base"
