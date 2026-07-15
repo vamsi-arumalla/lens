@@ -1,0 +1,208 @@
+package com.lens.app.ui
+
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.ImageProxy
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import com.lens.app.AskStatus
+import com.lens.app.AskViewModel
+import com.lens.app.audio.VoiceRecorder
+import kotlinx.coroutines.CompletableDeferred
+
+private val REQUIRED_PERMISSIONS =
+    arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+
+/** Grabs the JPEG bytes out of an in-memory capture. */
+private fun ImageProxy.jpegBytes(): ByteArray {
+    val buffer = planes[0].buffer
+    return ByteArray(buffer.remaining()).also { buffer.get(it) }
+}
+
+@Composable
+fun AskScreen(viewModel: AskViewModel, onOpenSettings: () -> Unit) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val uiState by viewModel.uiState.collectAsState()
+
+    var permissionsGranted by remember {
+        mutableStateOf(
+            REQUIRED_PERMISSIONS.all {
+                ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+            }
+        )
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { result -> permissionsGranted = result.values.all { it } }
+
+    LaunchedEffect(Unit) {
+        if (!permissionsGranted) permissionLauncher.launch(REQUIRED_PERMISSIONS)
+    }
+
+    if (!permissionsGranted) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Lens needs camera and microphone access.")
+        }
+        return
+    }
+
+    val recorder = remember { VoiceRecorder(context) }
+    val imageCapture = remember {
+        ImageCapture.Builder()
+            .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+            .build()
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { ctx ->
+                val previewView = PreviewView(ctx)
+                val providerFuture = ProcessCameraProvider.getInstance(ctx)
+                providerFuture.addListener({
+                    val provider = providerFuture.get()
+                    val preview = Preview.Builder().build().also {
+                        it.surfaceProvider = previewView.surfaceProvider
+                    }
+                    provider.unbindAll()
+                    provider.bindToLifecycle(
+                        lifecycleOwner,
+                        CameraSelector.DEFAULT_BACK_CAMERA,
+                        preview,
+                        imageCapture,
+                    )
+                }, ContextCompat.getMainExecutor(ctx))
+                previewView
+            },
+        )
+
+        IconButton(onClick = onOpenSettings, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)) {
+            Icon(Icons.Filled.Settings, "Settings", tint = Color.White)
+        }
+        IconButton(
+            onClick = viewModel::toggleDebugOverlay,
+            modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+        ) {
+            Icon(Icons.Filled.BugReport, "Toggle timings", tint = Color.White)
+        }
+
+        if (uiState.showDebugOverlay && uiState.timings.isNotEmpty()) {
+            Surface(
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
+                color = Color.Black.copy(alpha = 0.6f),
+                shape = MaterialTheme.shapes.small,
+            ) {
+                Column(Modifier.padding(8.dp)) {
+                    uiState.timings.forEach { (stage, ms) ->
+                        Text("$stage: ${ms}ms", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+        }
+
+        Column(
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            val statusText = when (uiState.status) {
+                AskStatus.IDLE -> "Hold to ask"
+                AskStatus.RECORDING -> "Listening…"
+                AskStatus.THINKING -> "Thinking…"
+                AskStatus.SPEAKING -> "Speaking"
+                AskStatus.ERROR -> uiState.errorMessage ?: "Something went wrong."
+            }
+            Text(
+                statusText,
+                color = Color.White,
+                modifier = Modifier
+                    .background(Color.Black.copy(alpha = 0.5f), MaterialTheme.shapes.small)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            )
+
+            val frameDeferred = remember { mutableStateOf<CompletableDeferred<ByteArray>?>(null) }
+            Box(
+                modifier = Modifier
+                    .padding(top = 16.dp)
+                    .size(88.dp)
+                    .background(
+                        if (uiState.status == AskStatus.RECORDING) Color.Red else Color.White,
+                        CircleShape,
+                    )
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onPress = {
+                                // Press: freeze the frame + start listening
+                                val deferred = CompletableDeferred<ByteArray>()
+                                frameDeferred.value = deferred
+                                imageCapture.takePicture(
+                                    ContextCompat.getMainExecutor(context),
+                                    object : ImageCapture.OnImageCapturedCallback() {
+                                        override fun onCaptureSuccess(image: ImageProxy) {
+                                            image.use { deferred.complete(it.jpegBytes()) }
+                                        }
+
+                                        override fun onError(exception: ImageCaptureException) {
+                                            deferred.completeExceptionally(exception)
+                                        }
+                                    },
+                                )
+                                try {
+                                    recorder.start()
+                                    viewModel.onRecordingStarted()
+                                } catch (e: Exception) {
+                                    viewModel.cancelToIdle()
+                                }
+                                tryAwaitRelease()
+                                // Release: stop listening, ship the question
+                                val audio = recorder.stop()
+                                try {
+                                    viewModel.ask(deferred.await(), audio)
+                                } catch (e: Exception) {
+                                    viewModel.cancelToIdle()
+                                }
+                            }
+                        )
+                    },
+            )
+        }
+    }
+}
