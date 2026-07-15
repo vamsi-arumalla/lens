@@ -20,15 +20,18 @@ object LensClient {
 
     fun askRequest(
         settings: LensSettings,
-        frameJpeg: ByteArray,
+        frames: List<ByteArray>,
         audio: File?,
         text: String? = null,
     ): Request {
+        require(frames.size in 1..3) { "contract allows 1..3 frames" }
         val body = MultipartBody.Builder().setType(MultipartBody.FORM).apply {
-            addFormDataPart(
-                "frames", "frame.jpg",
-                frameJpeg.toRequestBody("image/jpeg".toMediaType()),
-            )
+            frames.forEachIndexed { i, jpeg ->
+                addFormDataPart(
+                    "frames", "frame-$i.jpg",
+                    jpeg.toRequestBody("image/jpeg".toMediaType()),
+                )
+            }
             if (audio != null) {
                 addFormDataPart(
                     "audio", audio.name,

@@ -7,8 +7,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
-import androidx.camera.core.ImageCaptureException
-import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
@@ -33,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,17 +48,13 @@ import androidx.core.content.ContextCompat
 import com.lens.app.AskStatus
 import com.lens.app.AskViewModel
 import com.lens.app.audio.VoiceRecorder
-import kotlinx.coroutines.CompletableDeferred
+import com.lens.app.capture.CaptureSource
+import com.lens.app.capture.PhoneCaptureSource
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withTimeout
 
 private val REQUIRED_PERMISSIONS =
     arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
-
-/** Grabs the JPEG bytes out of an in-memory capture. */
-private fun ImageProxy.jpegBytes(): ByteArray {
-    val buffer = planes[0].buffer
-    return ByteArray(buffer.remaining()).also { buffer.get(it) }
-}
 
 @Composable
 fun AskScreen(viewModel: AskViewModel, onOpenSettings: () -> Unit) {
@@ -107,6 +102,12 @@ fun AskScreen(viewModel: AskViewModel, onOpenSettings: () -> Unit) {
             )
             .setJpegQuality(85)
             .build()
+    }
+    // The capture device behind the ask flow. Phase 3 swaps in a glasses
+    // source here; everything downstream (request shape, playback) is shared.
+    val captureScope = rememberCoroutineScope()
+    val captureSource: CaptureSource = remember(imageCapture) {
+        PhoneCaptureSource(imageCapture, ContextCompat.getMainExecutor(context))
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -175,7 +176,6 @@ fun AskScreen(viewModel: AskViewModel, onOpenSettings: () -> Unit) {
                     .padding(horizontal = 12.dp, vertical = 6.dp),
             )
 
-            val frameDeferred = remember { mutableStateOf<CompletableDeferred<ByteArray>?>(null) }
             Box(
                 modifier = Modifier
                     .padding(top = 16.dp)
@@ -187,21 +187,12 @@ fun AskScreen(viewModel: AskViewModel, onOpenSettings: () -> Unit) {
                     .pointerInput(Unit) {
                         detectTapGestures(
                             onPress = {
-                                // Press: freeze the frame + start listening
-                                val deferred = CompletableDeferred<ByteArray>()
-                                frameDeferred.value = deferred
-                                imageCapture.takePicture(
-                                    ContextCompat.getMainExecutor(context),
-                                    object : ImageCapture.OnImageCapturedCallback() {
-                                        override fun onCaptureSuccess(image: ImageProxy) {
-                                            image.use { deferred.complete(it.jpegBytes()) }
-                                        }
-
-                                        override fun onError(exception: ImageCaptureException) {
-                                            deferred.completeExceptionally(exception)
-                                        }
-                                    },
-                                )
+                                // Press: freeze the frame(s) + start listening.
+                                // runCatching keeps a capture failure from
+                                // cancelling the whole scope.
+                                val framesJob = captureScope.async {
+                                    runCatching { captureSource.captureFrames() }
+                                }
                                 try {
                                     recorder.start()
                                     viewModel.onRecordingStarted()
@@ -214,8 +205,8 @@ fun AskScreen(viewModel: AskViewModel, onOpenSettings: () -> Unit) {
                                 // deadlocking the gesture handler for good.
                                 val audio = recorder.stop()
                                 try {
-                                    val frame = withTimeout(4000) { deferred.await() }
-                                    viewModel.ask(frame, audio)
+                                    val frames = withTimeout(4000) { framesJob.await() }
+                                    viewModel.ask(frames.getOrThrow(), audio)
                                 } catch (e: Exception) {
                                     viewModel.showError("Camera capture failed — try again.")
                                 }

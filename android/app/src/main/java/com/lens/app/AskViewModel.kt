@@ -92,8 +92,8 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
         _uiState.value = _uiState.value.copy(showDebugOverlay = !_uiState.value.showDebugOverlay)
     }
 
-    /** Ship the captured frame + voice question to /ask and stream the spoken answer. */
-    fun ask(frameJpeg: ByteArray, audio: File?) {
+    /** Ship the captured frames + voice question to /ask and stream the spoken answer. */
+    fun ask(frames: List<ByteArray>, audio: File?) {
         if (audio == null) {
             _uiState.value = _uiState.value.copy(
                 status = AskStatus.ERROR,
@@ -109,7 +109,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             val request = try {
-                LensClient.askRequest(current, frameJpeg, audio)
+                LensClient.askRequest(current, frames, audio)
             } catch (e: IllegalArgumentException) {
                 showError("Backend URL looks invalid — check settings.")
                 return@launch

@@ -26,6 +26,7 @@ media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = 
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
 coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }
+junit = { module = "junit:junit", version = "4.13.2" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
