@@ -1,6 +1,9 @@
 package com.lens.app.net
 
 import com.lens.app.data.LensSettings
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -20,6 +23,16 @@ data class Moment(
     val frameUrl: String,
 )
 
+private val LOCAL_TIME = DateTimeFormatter.ofPattern("MMM d, HH:mm")
+
+private fun toLocalTime(isoUtc: String): String = try {
+    OffsetDateTime.parse(isoUtc)
+        .atZoneSameInstant(ZoneId.systemDefault())
+        .format(LOCAL_TIME)
+} catch (e: Exception) {
+    isoUtc.take(16).replace("T", " ")
+}
+
 class MemoryApi(private val settings: LensSettings) {
 
     private val base = settings.backendUrl.trimEnd('/')
@@ -33,7 +46,7 @@ class MemoryApi(private val settings: LensSettings) {
             val m = array.getJSONObject(i)
             Moment(
                 id = m.getString("id"),
-                createdAt = m.getString("created_at").take(16).replace("T", " "),
+                createdAt = toLocalTime(m.getString("created_at")),
                 caption = m.optString("caption"),
                 transcript = m.optString("transcript"),
                 question = m.optString("question"),
