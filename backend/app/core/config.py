@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     tts_voice: str = "alloy"
     kokoro_voice: str = "af_heart"
     whisper_model: str = "base"
+    stt_language: str = "en"  # empty string = auto-detect
     max_image_edge: int = 1280
     max_frames: int = 3
 

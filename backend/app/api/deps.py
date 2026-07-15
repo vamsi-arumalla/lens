@@ -18,7 +18,8 @@ async def require_api_key(x_api_key: str = Header(default="")) -> None:
 
 @lru_cache
 def get_stt() -> SpeechToText:
-    return FasterWhisperSTT(get_settings().whisper_model)
+    s = get_settings()
+    return FasterWhisperSTT(s.whisper_model, s.stt_language)
 
 
 @lru_cache

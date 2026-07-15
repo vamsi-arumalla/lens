@@ -14,8 +14,11 @@ class FasterWhisperSTT(SpeechToText):
     decoding (webm/m4a/wav) is handled by its bundled PyAV, no system ffmpeg
     needed."""
 
-    def __init__(self, model_size: str = "base") -> None:
+    def __init__(self, model_size: str = "base", language: str | None = "en") -> None:
         self._model_size = model_size
+        # Pinning the language stops auto-detection from hearing mumbled
+        # English as another language and transcribing garbage
+        self._language = language or None
         self._model = None
 
     def _load(self):
@@ -29,5 +32,7 @@ class FasterWhisperSTT(SpeechToText):
         return await anyio.to_thread.run_sync(self._transcribe_sync, audio)
 
     def _transcribe_sync(self, audio: bytes) -> str:
-        segments, _info = self._load().transcribe(io.BytesIO(audio))
+        segments, _info = self._load().transcribe(
+            io.BytesIO(audio), language=self._language
+        )
         return " ".join(s.text.strip() for s in segments).strip()

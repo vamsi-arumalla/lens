@@ -22,8 +22,9 @@ MEMORY_ADDENDUM = (
 )
 
 CAPTION_PROMPT = (
-    "Describe this photo in one line of at most 15 words, mentioning the main "
-    "objects and any readable text. Reply with just that line."
+    "Describe this photo in one line of at most 20 words: the main objects, "
+    "WHERE they are (which room or surface, if inferable), and any readable "
+    "text. Reply with just that line."
 )
 
 SEARCH_MEMORY_TOOL = {
