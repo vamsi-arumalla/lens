@@ -80,10 +80,21 @@ device.services.camera.setCameraFeed(getAssetUri("test_walkthrough.mp4"))
 // drive the ask flow; frames now come from the mock glasses feed
 ```
 
-## Quality watch item
+## Quality watch item — MEASURED 2026-07-15, degradation confirmed
 
-Glasses frames arrive Bluetooth-compressed at ≤ 720×1280 with adaptive
-per-frame compression — expect motion blur and artifacts. Haiku
-(`LENS_VLM_MODEL`) must be re-validated on that frame style; see the
-degraded-frame A/B in the latency/quality log. Revert to sonnet is one
-line in `backend/.env`.
+A/B on 8 real captured frames degraded to glasses quality (896 px, horizontal
+motion blur, JPEG q30), question "What is this?", haiku vs sonnet:
+
+- Clear subjects (AirPods ×2, key fob, iPhone, iPad, keyboard): **parity** —
+  both correct.
+- Ambiguous/textured frames: **haiku lost 3 of 8.** Called a patterned rug
+  "a measurement tape with centimeter markings" (hallucination); twice called
+  a silicone facial brush "a massage ball or sensory toy". Sonnet answered
+  all three correctly and consistently.
+
+Decision for now: keep haiku while capture is phone-only (phone frames are
+sharp; parity holds there). **Before glasses ship real frames, revisit** —
+options: revert `LENS_VLM_MODEL` to sonnet (perceived latency returns to
+~2.5–3 s with hedging), or escalate by measured input quality (blur/size
+heuristic), which keys on the frame, not the device, so it does not leak
+the capture abstraction. Do NOT key model choice on device type.
