@@ -48,4 +48,5 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.okhttp)
     implementation(libs.datastore.preferences)
+    implementation(libs.coil.compose)
 }
