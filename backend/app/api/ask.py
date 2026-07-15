@@ -21,6 +21,8 @@ FALLBACK_MESSAGE = "Sorry, I couldn't process that."
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 _CLAUSE_END = re.compile(r"(?<=[,;:])\s+")
 _EARLY_SPLIT_MIN = 15
+# The model sometimes emits markdown despite the prompt; strip it before TTS
+_TTS_UNSPEAKABLE = re.compile(r"[*_#`]+")
 
 
 async def sentence_chunks(text_stream: AsyncIterator[str]) -> AsyncIterator[str]:
@@ -30,7 +32,7 @@ async def sentence_chunks(text_stream: AsyncIterator[str]) -> AsyncIterator[str]
     buffer = ""
     yielded_any = False
     async for token in text_stream:
-        buffer += token
+        buffer += _TTS_UNSPEAKABLE.sub("", token)
         parts = _SENTENCE_END.split(buffer)
         while len(parts) > 1:
             sentence = parts.pop(0)

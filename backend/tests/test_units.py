@@ -41,6 +41,13 @@ async def test_sentence_chunks_flushes_trailing_text():
 
 
 @pytest.mark.anyio
+async def test_markdown_is_stripped_before_tts():
+    assert await _collect(["This is a **Toyota** key `fob`."]) == [
+        "This is a Toyota key fob."
+    ]
+
+
+@pytest.mark.anyio
 async def test_first_chunk_splits_early_at_clause_boundary():
     # One long sentence: the first chunk should break at the comma so TTS can
     # start before the sentence finishes.
