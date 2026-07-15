@@ -57,9 +57,20 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                val httpError = generateSequence<Throwable>(error) { it.cause }
+                    .mapNotNull { it.message }
+                    .firstOrNull { it.startsWith("backend returned HTTP") }
+                val message = when {
+                    httpError?.endsWith("401") == true ->
+                        "Backend rejected the API key — check settings."
+                    httpError?.endsWith("422") == true ->
+                        "Didn't catch a question — hold the button while you speak."
+                    httpError != null -> "Backend error ($httpError)."
+                    else -> "Couldn't reach Lens — check the backend URL in settings."
+                }
                 _uiState.value = _uiState.value.copy(
                     status = AskStatus.ERROR,
-                    errorMessage = "Couldn't reach Lens — check the backend URL in settings.",
+                    errorMessage = message,
                 )
             }
         })
@@ -71,6 +82,10 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
 
     fun cancelToIdle() {
         _uiState.value = _uiState.value.copy(status = AskStatus.IDLE)
+    }
+
+    fun showError(message: String) {
+        _uiState.value = _uiState.value.copy(status = AskStatus.ERROR, errorMessage = message)
     }
 
     fun toggleDebugOverlay() {
@@ -88,7 +103,20 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
         }
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(status = AskStatus.THINKING)
-            val request = LensClient.askRequest(settingsStore.current(), frameJpeg, audio)
+            val current = settingsStore.current()
+            if (current.backendUrl.isBlank()) {
+                showError("Set the backend URL in settings (gear icon).")
+                return@launch
+            }
+            val request = try {
+                LensClient.askRequest(current, frameJpeg, audio)
+            } catch (e: IllegalArgumentException) {
+                showError("Backend URL looks invalid — check settings.")
+                return@launch
+            }
+            // A player left in the error state must be reset before reuse
+            player.stop()
+            player.clearMediaItems()
             val factory = DataSource.Factory {
                 StreamingDataSource(LensClient.http, request) { headers ->
                     val stages = headers.entries

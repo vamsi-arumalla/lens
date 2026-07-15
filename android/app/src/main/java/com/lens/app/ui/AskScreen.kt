@@ -2,6 +2,7 @@ package com.lens.app.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.util.Size
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -9,6 +10,8 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
@@ -47,6 +50,7 @@ import com.lens.app.AskStatus
 import com.lens.app.AskViewModel
 import com.lens.app.audio.VoiceRecorder
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeout
 
 private val REQUIRED_PERMISSIONS =
     arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
@@ -87,8 +91,21 @@ fun AskScreen(viewModel: AskViewModel, onOpenSettings: () -> Unit) {
 
     val recorder = remember { VoiceRecorder(context) }
     val imageCapture = remember {
+        // The backend downscales to 1280px anyway; capturing near that size
+        // saves several MB of upload per ask
         ImageCapture.Builder()
             .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+            .setResolutionSelector(
+                ResolutionSelector.Builder()
+                    .setResolutionStrategy(
+                        ResolutionStrategy(
+                            Size(1280, 960),
+                            ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
+                        )
+                    )
+                    .build()
+            )
+            .setJpegQuality(85)
             .build()
     }
 
@@ -192,12 +209,15 @@ fun AskScreen(viewModel: AskViewModel, onOpenSettings: () -> Unit) {
                                     viewModel.cancelToIdle()
                                 }
                                 tryAwaitRelease()
-                                // Release: stop listening, ship the question
+                                // Release: stop listening, ship the question.
+                                // The timeout keeps a stuck capture from
+                                // deadlocking the gesture handler for good.
                                 val audio = recorder.stop()
                                 try {
-                                    viewModel.ask(deferred.await(), audio)
+                                    val frame = withTimeout(4000) { deferred.await() }
+                                    viewModel.ask(frame, audio)
                                 } catch (e: Exception) {
-                                    viewModel.cancelToIdle()
+                                    viewModel.showError("Camera capture failed — try again.")
                                 }
                             }
                         )

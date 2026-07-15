@@ -11,8 +11,8 @@ import kotlinx.coroutines.flow.map
 private val Context.dataStore by preferencesDataStore(name = "lens_settings")
 
 data class LensSettings(
-    val backendUrl: String = "http://192.168.1.10:8000",
-    val apiKey: String = "dev-key",
+    val backendUrl: String = "",
+    val apiKey: String = "",
 )
 
 class SettingsStore(private val context: Context) {
