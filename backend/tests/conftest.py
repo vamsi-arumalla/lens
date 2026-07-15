@@ -3,8 +3,10 @@ import os
 from collections.abc import AsyncIterator
 
 # Env vars beat the .env file in pydantic-settings, so tests stay hermetic
-# even when backend/.env holds real keys.
+# even when backend/.env holds real keys or a local TTS provider (whose
+# warm-up would otherwise download models during tests).
 os.environ["LENS_API_KEY"] = "dev-key"
+os.environ["LENS_TTS_PROVIDER"] = "openai"
 
 import pytest
 from fastapi.testclient import TestClient

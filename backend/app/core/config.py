@@ -14,8 +14,10 @@ class Settings(BaseSettings):
 
     vlm_model: str = "claude-sonnet-4-6"
     vlm_max_tokens: int = 150
+    tts_provider: str = "openai"  # "openai" | "kokoro" (local, no round-trip)
     tts_model: str = "tts-1"
     tts_voice: str = "alloy"
+    kokoro_voice: str = "af_heart"
     whisper_model: str = "base"
     max_image_edge: int = 1280
     max_frames: int = 3

@@ -13,6 +13,8 @@ dependencies = [
     "openai>=1.40",
     "faster-whisper>=1.0",
     "pillow>=10.3",
+    "kokoro>=0.9.4",
+    "lameenc>=1.8.4",
 ]
 
 [dependency-groups]

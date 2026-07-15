@@ -4,7 +4,7 @@ from fastapi import Header, HTTPException
 
 from app.core.config import get_settings
 from app.services.stt import FasterWhisperSTT, SpeechToText
-from app.services.tts import OpenAITTS, TextToSpeech
+from app.services.tts import KokoroTTS, OpenAITTS, TextToSpeech
 from app.services.vlm import AnthropicVLM, VisionLanguageModel
 
 
@@ -27,4 +27,6 @@ def get_vlm() -> VisionLanguageModel:
 @lru_cache
 def get_tts() -> TextToSpeech:
     s = get_settings()
+    if s.tts_provider == "kokoro":
+        return KokoroTTS(s.kokoro_voice)
     return OpenAITTS(s.openai_api_key, s.tts_model, s.tts_voice)
