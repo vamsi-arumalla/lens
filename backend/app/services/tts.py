@@ -21,17 +21,24 @@ class KokoroTTS(TextToSpeech):
 
     SAMPLE_RATE = 24000
 
-    def __init__(self, voice: str = "af_heart") -> None:
+    def __init__(self, voice: str = "af_heart", device: str = "auto") -> None:
         self._voice = voice
+        self._device = device
         self._pipeline = None
         self._lock = threading.Lock()
 
     def _load(self):
         with self._lock:
             if self._pipeline is None:
+                import torch
                 from kokoro import KPipeline
 
-                self._pipeline = KPipeline(lang_code="a", repo_id="hexgrad/Kokoro-82M")
+                device = self._device
+                if device == "auto":
+                    device = "mps" if torch.backends.mps.is_available() else "cpu"
+                self._pipeline = KPipeline(
+                    lang_code="a", repo_id="hexgrad/Kokoro-82M", device=device
+                )
         return self._pipeline
 
     def warm_up(self) -> None:

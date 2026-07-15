@@ -1,9 +1,13 @@
+import asyncio
 import base64
+import logging
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
 from anthropic import AsyncAnthropic
+
+logger = logging.getLogger("lens.vlm")
 
 SYSTEM_PROMPT = (
     "You are Lens, a real-time vision assistant. The user is pointing a camera "
@@ -87,6 +91,14 @@ class VisionLanguageModel(ABC):
     async def caption(self, images_jpeg: list[bytes]) -> str: ...
 
 
+def _discard_stream(task: asyncio.Task) -> None:
+    """Close a losing hedged stream once its startup completes."""
+    if task.cancelled() or task.exception():
+        return
+    mgr, _stream, _it, _first = task.result()
+    asyncio.get_running_loop().create_task(mgr.__aexit__(None, None, None))
+
+
 class AnthropicVLM(VisionLanguageModel):
     def __init__(
         self,
@@ -94,11 +106,43 @@ class AnthropicVLM(VisionLanguageModel):
         model: str,
         max_tokens: int = 150,
         caption_model: str | None = None,
+        hedge_ms: int = 0,
     ) -> None:
         self._client = AsyncAnthropic(api_key=api_key)
         self._model = model
         self._max_tokens = max_tokens
         self._caption_model = caption_model or model
+        self._hedge_ms = hedge_ms
+
+    async def _open_stream(self, request_kwargs: dict):
+        """Enter a streaming request and pull its first token.
+        Returns (ctx_manager, stream, token_iterator, first_token_or_None)."""
+        mgr = self._client.messages.stream(**request_kwargs)
+        stream = await mgr.__aenter__()
+        iterator = stream.text_stream.__aiter__()
+        try:
+            first = await anext(iterator)
+        except StopAsyncIteration:
+            first = None
+        return mgr, stream, iterator, first
+
+    async def _open_hedged(self, request_kwargs: dict):
+        """First-token tail-latency hedge: if the primary request hasn't
+        produced a token within hedge_ms, race a duplicate and stream from
+        whichever wins. The loser is closed in the background."""
+        primary = asyncio.create_task(self._open_stream(request_kwargs))
+        done, _ = await asyncio.wait({primary}, timeout=self._hedge_ms / 1000)
+        if done:
+            return primary.result()
+        logger.info("VLM first token > %dms; hedging with a second request", self._hedge_ms)
+        backup = asyncio.create_task(self._open_stream(request_kwargs))
+        done, pending = await asyncio.wait(
+            {primary, backup}, return_when=asyncio.FIRST_COMPLETED
+        )
+        winner = done.pop()
+        for loser in done | pending:
+            loser.add_done_callback(_discard_stream)
+        return winner.result()
 
     async def stream_answer(
         self,
@@ -117,17 +161,26 @@ class AnthropicVLM(VisionLanguageModel):
             kwargs["tools"] = [SEARCH_MEMORY_TOOL]
 
         # Tool-use loop: capped so a confused model can't search forever
-        for _round in range(4):
-            async with self._client.messages.stream(
+        for round_index in range(4):
+            request_kwargs = dict(
                 model=self._model,
                 max_tokens=self._max_tokens,
                 system=system,
                 messages=messages,
                 **kwargs,
-            ) as stream:
-                async for text in stream.text_stream:
+            )
+            if round_index == 0 and self._hedge_ms > 0:
+                mgr, stream, iterator, first = await self._open_hedged(request_kwargs)
+            else:
+                mgr, stream, iterator, first = await self._open_stream(request_kwargs)
+            try:
+                if first is not None:
+                    yield first
+                async for text in iterator:
                     yield text
                 final = await stream.get_final_message()
+            finally:
+                await mgr.__aexit__(None, None, None)
 
             if final.stop_reason != "tool_use" or memory_search is None:
                 return

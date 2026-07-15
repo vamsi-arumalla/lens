@@ -26,7 +26,11 @@ def get_stt() -> SpeechToText:
 def get_vlm() -> VisionLanguageModel:
     s = get_settings()
     return AnthropicVLM(
-        s.anthropic_api_key, s.vlm_model, s.vlm_max_tokens, s.caption_model
+        s.anthropic_api_key,
+        s.vlm_model,
+        s.vlm_max_tokens,
+        s.caption_model,
+        s.vlm_hedge_ms,
     )
 
 
@@ -75,5 +79,5 @@ def require_store() -> MomentStore:
 def get_tts() -> TextToSpeech:
     s = get_settings()
     if s.tts_provider == "kokoro":
-        return KokoroTTS(s.kokoro_voice)
+        return KokoroTTS(s.kokoro_voice, s.kokoro_device)
     return OpenAITTS(s.openai_api_key, s.tts_model, s.tts_voice)
