@@ -22,6 +22,15 @@ class Settings(BaseSettings):
     max_image_edge: int = 1280
     max_frames: int = 3
 
+    # Phase 2 — memory. Empty database_url disables memory entirely.
+    database_url: str = "postgresql://lens:lens@localhost:5433/lens"
+    storage_dir: str = "./data"
+    caption_model: str = "claude-haiku-4-5-20251001"
+    clip_model: str = "ViT-B-32"
+    clip_pretrained: str = "laion2b_s34b_b79k"
+    text_embedding_model: str = "all-MiniLM-L6-v2"
+    thumb_edge: int = 320
+
 
 @lru_cache
 def get_settings() -> Settings:
