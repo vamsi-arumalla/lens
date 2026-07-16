@@ -49,7 +49,10 @@ import com.lens.app.AskStatus
 import com.lens.app.AskViewModel
 import com.lens.app.audio.VoiceRecorder
 import com.lens.app.capture.CaptureSource
+import com.lens.app.capture.GlassesCaptureSource
 import com.lens.app.capture.PhoneCaptureSource
+import com.lens.app.glasses.GlassesRuntime
+import com.lens.app.glasses.GlassesState
 import kotlinx.coroutines.async
 import kotlinx.coroutines.withTimeout
 
@@ -103,12 +106,20 @@ fun AskScreen(viewModel: AskViewModel, onOpenSettings: () -> Unit) {
             .setJpegQuality(85)
             .build()
     }
-    // The capture device behind the ask flow. Phase 3 swaps in a glasses
-    // source here; everything downstream (request shape, playback) is shared.
+    // The capture device behind the ask flow: glasses when a stream is live,
+    // phone otherwise. Everything downstream (request shape, playback) is
+    // shared, and a dropped glasses stream falls back to phone automatically.
     val captureScope = rememberCoroutineScope()
-    val captureSource: CaptureSource = remember(imageCapture) {
+    val glassesState by GlassesRuntime.manager.state.collectAsState()
+    val phoneSource: CaptureSource = remember(imageCapture) {
         PhoneCaptureSource(imageCapture, ContextCompat.getMainExecutor(context))
     }
+    val captureSource: CaptureSource =
+        if (glassesState == GlassesState.READY) {
+            remember { GlassesCaptureSource(GlassesRuntime.manager) }
+        } else {
+            phoneSource
+        }
 
     Box(Modifier.fillMaxSize()) {
         AndroidView(
@@ -161,6 +172,17 @@ fun AskScreen(viewModel: AskViewModel, onOpenSettings: () -> Unit) {
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            if (glassesState == GlassesState.READY) {
+                Text(
+                    "GLASSES",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier
+                        .padding(bottom = 6.dp)
+                        .background(Color(0xFF6650A4), MaterialTheme.shapes.small)
+                        .padding(horizontal = 10.dp, vertical = 3.dp),
+                )
+            }
             val statusText = when (uiState.status) {
                 AskStatus.IDLE -> "Hold to ask"
                 AskStatus.RECORDING -> "Listening…"

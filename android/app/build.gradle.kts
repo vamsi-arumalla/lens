@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "com.lens.app"
-        minSdk = 26
+        minSdk = 29 // DAT SDK (mwdat) floor
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
@@ -31,6 +31,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -49,5 +50,9 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.datastore.preferences)
     implementation(libs.coil.compose)
+    implementation(libs.mwdat.core)
+    implementation(libs.mwdat.camera)
+    // MockDeviceKit is compiled in but only ever enabled in DEBUG builds
+    implementation(libs.mwdat.mockdevice)
     testImplementation(libs.junit)
 }

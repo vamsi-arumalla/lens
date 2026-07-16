@@ -4,11 +4,14 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Real glasses connect over Bluetooth Classic (DAT SDK) -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
     <uses-feature android:name="android.hardware.camera" android:required="true" />
 
     <!-- Cleartext allowed for dev: backend runs on a local-network IP over http -->
     <application
+        android:name=".LensApplication"
         android:label="Lens"
         android:icon="@android:mipmap/sym_def_app_icon"
         android:usesCleartextTraffic="true"
