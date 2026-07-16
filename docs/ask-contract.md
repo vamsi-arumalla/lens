@@ -13,6 +13,12 @@ A machine-readable summary of the normative fields lives at the bottom; the
 Android unit test `AskContractTest` asserts the app's request builder matches
 it.
 
+> **Decision record (2026-07-15):** `device_type` is intentionally absent.
+> Device identity is a client-declared label — it can describe, never drive
+> behavior. The glasses-provenance badge is deferred; if revived it goes on
+> `/ingest` only, as explicitly-labeled stored-verbatim never-read metadata —
+> never on `/ask`, never branched on.
+
 ## Request
 
 ```

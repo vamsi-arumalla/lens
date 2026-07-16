@@ -12,6 +12,7 @@ import com.meta.wearable.dat.core.Wearables
 import com.meta.wearable.dat.core.selectors.AutoDeviceSelector
 import com.meta.wearable.dat.core.session.DeviceSession
 import com.meta.wearable.dat.core.session.DeviceSessionState
+import com.meta.wearable.dat.core.types.DeviceSessionError
 import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -61,9 +62,42 @@ class GlassesManager(private val scope: CoroutineScope) {
             this.stream = stream
             stream.start()
             withTimeout(15_000) { stream.state.first { it == StreamState.STREAMING } }
+            // Watch every death signal the SDK exposes — a fold/doff must
+            // never leave state at READY (silent-death hazard). Each signal
+            // logs distinctly so we know which one an event actually fires.
             watchJob = scope.launch {
-                stream.state.collect { s ->
-                    if (s == StreamState.STOPPED || s == StreamState.CLOSED) disconnect()
+                launch {
+                    stream.state.collect { s ->
+                        Log.i(TAG, "signal stream.state=$s")
+                        if (s == StreamState.STOPPED || s == StreamState.CLOSED) {
+                            Log.w(TAG, "disconnecting: stream.state=$s")
+                            disconnect()
+                        }
+                    }
+                }
+                launch {
+                    session.state.collect { s ->
+                        Log.i(TAG, "signal session.state=$s")
+                        if (s == DeviceSessionState.STOPPING || s == DeviceSessionState.STOPPED) {
+                            Log.w(TAG, "disconnecting: session.state=$s")
+                            disconnect()
+                        }
+                    }
+                }
+                launch {
+                    // Fold fires SESSION_ENDED_BY_DEVICE (verified with the
+                    // mock); which of the three signals lands first isn't
+                    // guaranteed on real hardware, so all of them disconnect.
+                    session.errors.collect { e ->
+                        Log.w(TAG, "signal session.error=$e")
+                        if (e == DeviceSessionError.SESSION_ENDED_BY_DEVICE ||
+                            e == DeviceSessionError.DEVICE_DISCONNECTED ||
+                            e == DeviceSessionError.DEVICE_POWERED_OFF
+                        ) {
+                            Log.w(TAG, "disconnecting: session.error=$e")
+                            disconnect()
+                        }
+                    }
                 }
             }
             _state.value = GlassesState.READY
@@ -87,10 +121,22 @@ class GlassesManager(private val scope: CoroutineScope) {
         _state.value = GlassesState.DISCONNECTED
     }
 
-    /** Capture one still from the glasses stream as contract-conforming JPEG. */
+    /** Capture one still from the glasses stream as contract-conforming JPEG.
+     * Any failure drops the connection: state must never stay READY when a
+     * capture can't succeed. */
     suspend fun capturePhotoJpeg(): ByteArray {
         val stream = stream ?: error("glasses are not streaming")
-        return stream.capturePhoto().getOrThrow().toJpeg()
+        return try {
+            stream.capturePhoto().getOrThrow().toJpeg()
+        } catch (e: Exception) {
+            Log.w(TAG, "capture failed; dropping glasses connection", e)
+            disconnect()
+            throw e
+        }
+    }
+
+    private companion object {
+        const val TAG = "GlassesManager"
     }
 }
 

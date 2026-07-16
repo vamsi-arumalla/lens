@@ -133,7 +133,7 @@ Goal: replace the phone camera with glasses POV camera. Backend unchanged.
 2. New capture mode in the Android app: when glasses are connected, frames come from the
    glasses camera stream; mic/speaker via the glasses' standard Bluetooth profiles.
 3. Push-to-talk trigger: a button in the phone app is fine for v1 (glasses-native triggers later).
-4. Same /ask and /ingest contracts. Add a `device_type` field ("phone" | "glasses") to moments.
+4. Same /ask and /ingest contracts. [`device_type` skipped by decision 2026-07-15 — labels describe, never drive; badge deferred; if revived: optional never-read /ingest metadata only. See decision record in docs/ask-contract.md.]
 5. Handle session lifecycle per the SDK docs (pause/resume, device availability). Fail gracefully
    back to phone camera when glasses disconnect.
 6. NOTE for implementer: consult the SDK's live docs via its MCP endpoint

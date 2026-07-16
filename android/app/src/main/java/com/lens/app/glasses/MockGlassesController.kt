@@ -37,4 +37,19 @@ object MockGlassesController {
         GlassesRuntime.manager.disconnect()
         runCatching { MockDeviceKit.getInstance(context).disable() }
     }
+
+    private fun pairedGlasses(context: Context): MockGlasses? =
+        MockDeviceKit.getInstance(context)
+            .pairedDevices.filterIsInstance<MockGlasses>().firstOrNull()
+
+    /** Simulate the user folding the glasses (kills the session per SDK). */
+    fun fold(context: Context) {
+        pairedGlasses(context)?.fold()
+    }
+
+    /** Simulate reopening the hinges — per SDK docs this restores Bluetooth
+     * but does NOT restart the session. */
+    fun unfold(context: Context) {
+        pairedGlasses(context)?.unfold()
+    }
 }

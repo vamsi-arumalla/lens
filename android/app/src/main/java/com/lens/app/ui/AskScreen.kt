@@ -211,9 +211,17 @@ fun AskScreen(viewModel: AskViewModel, onOpenSettings: () -> Unit) {
                             onPress = {
                                 // Press: freeze the frame(s) + start listening.
                                 // runCatching keeps a capture failure from
-                                // cancelling the whole scope.
+                                // cancelling the whole scope; a dead glasses
+                                // capture falls back to the phone in-press.
                                 val framesJob = captureScope.async {
                                     runCatching { captureSource.captureFrames() }
+                                        .recoverCatching { e ->
+                                            if (captureSource !== phoneSource) {
+                                                phoneSource.captureFrames()
+                                            } else {
+                                                throw e
+                                            }
+                                        }
                                 }
                                 try {
                                     recorder.start()

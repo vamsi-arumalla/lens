@@ -94,6 +94,19 @@ fun SettingsScreen(viewModel: AskViewModel, onDone: () -> Unit) {
                     },
                 )
             }
+            Row {
+                TextButton(onClick = { MockGlassesController.fold(context) }) {
+                    Text("Fold")
+                }
+                TextButton(onClick = { MockGlassesController.unfold(context) }) {
+                    Text("Unfold")
+                }
+                TextButton(onClick = {
+                    GlassesRuntime.scope.launch { GlassesRuntime.manager.connect() }
+                }) {
+                    Text("Reconnect")
+                }
+            }
         }
     }
 }
