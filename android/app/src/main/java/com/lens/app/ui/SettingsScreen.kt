@@ -102,6 +102,9 @@ fun SettingsScreen(viewModel: AskViewModel, onDone: () -> Unit) {
                     Text("Unfold")
                 }
                 TextButton(onClick = {
+                    // Fold implies doff; a reconnect must re-don the device
+                    // (start() is idempotent) before opening a session
+                    MockGlassesController.start(context)
                     GlassesRuntime.scope.launch { GlassesRuntime.manager.connect() }
                 }) {
                     Text("Reconnect")
