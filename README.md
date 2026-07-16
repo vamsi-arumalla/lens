@@ -6,13 +6,35 @@ LENS is a real-time multimodal AI assistant: point a camera, hold a button, ask 
 
 The client captures a camera frame and a voice question while you hold a push-to-talk button. On release, both are uploaded to a FastAPI backend that transcribes the audio, sends the frame and question to a vision-language model, and streams synthesized speech back before the model has even finished answering. Every capture is stored and embedded (image + text vectors in pgvector), so you can later ask memory questions like "where did I leave my keys?" and the model answers by searching past moments with a tool call. The capture device is abstracted behind a single byte-level contract: today it is an Android phone, and a Meta Ray-Ban glasses capture path is integrated and mock-verified against the same contract.
 
-```
-[Capture Client]                    [Backend]                          [External]
-Android app (Kotlin)   --HTTPS-->   FastAPI service (Python 3.12)
-  CameraX / glasses frames            /ask       (frames + voice query)  Anthropic API (vision + agent)
-  Mic audio                           /ingest    (memory moments)        faster-whisper (STT, local)
-  Audio playback       <--stream--    /memory    (search, delete)        Kokoro or OpenAI tts-1 (TTS)
-                                      Postgres + pgvector (memory)
+```mermaid
+flowchart LR
+    subgraph client["Capture client"]
+        APP["Android app (Kotlin)<br/>CameraX / glasses frames · mic audio<br/>progressive audio playback"]
+    end
+
+    subgraph backend["Backend — FastAPI (Python 3.12)"]
+        ASK["POST /ask<br/>frame + voice query"]
+        ING["POST /ingest<br/>memory moments"]
+        MEM["/memory<br/>search · delete"]
+        DB[("Postgres 16 + pgvector<br/>image + text embeddings")]
+    end
+
+    subgraph services["Model services"]
+        STT["faster-whisper<br/>STT, local"]
+        VLM["Anthropic API<br/>vision + agent tool use"]
+        TTS["Kokoro-82M (local, MPS)<br/>or OpenAI tts-1"]
+    end
+
+    APP -- "HTTPS (multipart)" --> ASK
+    APP --> ING
+    APP --> MEM
+    ASK --> STT
+    STT --> VLM
+    VLM -- "memory search (tool call)" --> DB
+    VLM --> TTS
+    TTS -- "streamed speech" --> APP
+    ING --> DB
+    MEM --> DB
 ```
 
 ## Key engineering decisions
